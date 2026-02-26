@@ -137,7 +137,6 @@ tasks.register('javadocJar', Jar) {
 }
 
 tasks.register('sourcesJar', Jar) {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     archiveClassifier.set('sources')
     from sourceSets.main.allSource
     dependsOn("generateVersionProperties")
