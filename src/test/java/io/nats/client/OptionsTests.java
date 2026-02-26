@@ -50,7 +50,11 @@ public class OptionsTests {
 
     @Test
     public void testClientVersion() {
-        assertTrue(Nats.CLIENT_VERSION.endsWith(".dev"));
+        assertFalse(Nats.CLIENT_VERSION.isEmpty());
+        // Either running in an IDE (no generated properties file) or a proper semver x.y.z
+        boolean isDevelopment = Nats.CLIENT_VERSION.equals("development");
+        boolean isSemVer = Nats.CLIENT_VERSION.indexOf(".") != Nats.CLIENT_VERSION.lastIndexOf(".");
+        assertTrue(isDevelopment || isSemVer);
     }
 
     @Test
