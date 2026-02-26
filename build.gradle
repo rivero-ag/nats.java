@@ -42,10 +42,22 @@ dependencies {
     testImplementation 'org.junit.platform:junit-platform-launcher:1.14.3'
 }
 
+tasks.register("generateVersionProperties") {
+    def propsFile = file("src/main/resources/io/nats/version.properties")
+    outputs.file(propsFile)
+    doLast {
+        propsFile.parentFile.mkdirs()
+        propsFile.text = "version=${version}\n"
+    }
+}
+
+compileJava.dependsOn generateVersionProperties
+processResources.dependsOn generateVersionProperties
+
 sourceSets {
     main {
         java {
-            srcDirs = ['src/main/java','src/examples/java']
+            srcDirs = ['src/main/java','src/main/resources']
         }
     }
     test {
@@ -53,7 +65,18 @@ sourceSets {
             srcDirs = ['src/test/java']
         }
     }
+    examples {
+        java {
+            compileClasspath += sourceSets.main.output
+            srcDirs = ['src/examples/java']
+        }
+    }
 }
+
+configurations {
+    examplesImplementation.extendsFrom api
+}
+
 
 tasks.register('bundle', Bundle) {
     from sourceSets.main.output
@@ -115,9 +138,7 @@ tasks.register('examplesJar', Jar) {
                 'Implementation-Version': jarVersion,
                 'Implementation-Vendor': 'nats.io')
     }
-    from(sourceSets.main.output) {
-        include "io/nats/examples/**"
-    }
+    from(sourceSets.examples.output)
 }
 
 tasks.register('javadocJar', Jar) {
@@ -126,8 +147,10 @@ tasks.register('javadocJar', Jar) {
 }
 
 tasks.register('sourcesJar', Jar) {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     archiveClassifier.set('sources')
     from sourceSets.main.allSource
+    dependsOn("generateVersionProperties")
 }
 
 tasks.register('testsJar', Jar) {

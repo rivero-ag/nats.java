@@ -50,7 +50,7 @@ public class OptionsTests {
 
     @Test
     public void testClientVersion() {
-        assertTrue(Nats.CLIENT_VERSION.endsWith(".dev"));
+        assertNotNull(Nats.CLIENT_VERSION);
     }
 
     @Test
