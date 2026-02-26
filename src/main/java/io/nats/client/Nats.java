@@ -84,9 +84,11 @@ public abstract class Nats {
     static {
         Properties props = new Properties();
         String cv = null;
-        try (InputStream is = Nats.class.getResourceAsStream("/io/nats/version.properties")) {
-            props.load(is);
-            cv = props.getProperty("version");
+        try (InputStream is = Nats.class.getResourceAsStream("/io/nats/jnats/version.properties")) {
+            if (is != null) {
+                props.load(is);
+                cv = props.getProperty("version");
+            }
         }
         catch (Exception ignore) {
             // don't fail on any exception

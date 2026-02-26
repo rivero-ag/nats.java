@@ -42,29 +42,19 @@ dependencies {
     testImplementation 'org.junit.platform:junit-platform-launcher:1.14.3'
 }
 
-tasks.register("generateVersionProperties") {
-    def propsFile = file("src/main/resources/io/nats/version.properties")
-    outputs.file(propsFile)
+def generateVersionProps = tasks.register("generateVersionProperties") {
+    def propsDir = layout.buildDirectory.dir("generated-resources/main")
+    outputs.dir(propsDir)
     doLast {
-        propsFile.parentFile.mkdirs()
-        propsFile.text = "version=${version}\n"
+        def f = propsDir.get().file("io/nats/jnats/version.properties").asFile
+        f.parentFile.mkdirs()
+        f.text = "version=${version}\n"
     }
 }
 
-compileJava.dependsOn generateVersionProperties
-processResources.dependsOn generateVersionProperties
+sourceSets.main.resources.srcDir(generateVersionProps.map { it.outputs.files })
 
 sourceSets {
-    main {
-        java {
-            srcDirs = ['src/main/java','src/main/resources']
-        }
-    }
-    test {
-        java {
-            srcDirs = ['src/test/java']
-        }
-    }
     examples {
         java {
             compileClasspath += sourceSets.main.output
