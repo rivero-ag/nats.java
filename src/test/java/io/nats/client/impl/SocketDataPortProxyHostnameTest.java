@@ -22,8 +22,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -43,19 +45,21 @@ public class SocketDataPortProxyHostnameTest extends TestBase {
     static class WhitelistingProxyServer implements Runnable {
         private final ServerSocket serverSocket;
         private volatile String receivedHost;
+        private final CountDownLatch hostReceivedLatch = new CountDownLatch(1);
         private final ExecutorService executor;
 
         WhitelistingProxyServer(ExecutorService executor) throws IOException {
             this.executor = executor;
-            // Bind to localhost on ephemeral port
-            this.serverSocket = new ServerSocket(0, 10, InetAddress.getLoopbackAddress());
+            // Bind to 127.0.0.1 explicitly to avoid IPv4/IPv6 mismatch
+            this.serverSocket = new ServerSocket(0, 10, InetAddress.getByName("127.0.0.1"));
         }
 
         public int getPort() {
             return serverSocket.getLocalPort();
         }
 
-        public String getReceivedHost() {
+        public String awaitReceivedHost(long timeout, TimeUnit unit) throws InterruptedException {
+            hostReceivedLatch.await(timeout, unit);
             return receivedHost;
         }
 
@@ -80,14 +84,14 @@ public class SocketDataPortProxyHostnameTest extends TestBase {
                 String connectRequest = readLine(in);
 
                 if (connectRequest != null && connectRequest.startsWith("CONNECT ")) {
-                    // Parse the CONNECT request to extract host and port
-                    // Format: CONNECT host:port HTTP/1.x
+                    // Parse: CONNECT host:port HTTP/1.x
                     String[] parts = connectRequest.split("\\s+");
                     if (parts.length >= 2) {
                         String hostPort = parts[1];
                         String[] hostPortParts = hostPort.split(":");
                         if (hostPortParts.length >= 1) {
                             receivedHost = hostPortParts[0];
+                            hostReceivedLatch.countDown();
                         }
                     }
 
@@ -114,16 +118,14 @@ public class SocketDataPortProxyHostnameTest extends TestBase {
         private String readLine(InputStream in) throws IOException {
             StringBuilder sb = new StringBuilder();
             int ch;
-            boolean gotCR = false;
             while ((ch = in.read()) != -1) {
                 if (ch == '\r') {
-                    gotCR = true;
-                } else if (ch == '\n' && gotCR) {
-                    return sb.deleteCharAt(sb.length() - 1).toString();
-                } else {
-                    gotCR = false;
-                    sb.append((char) ch);
+                    continue;
                 }
+                if (ch == '\n') {
+                    return sb.toString();
+                }
+                sb.append((char) ch);
             }
             return sb.length() > 0 ? sb.toString() : null;
         }
@@ -181,7 +183,7 @@ public class SocketDataPortProxyHostnameTest extends TestBase {
             executor.submit(proxyServer);
 
             Options.Builder optionsBuilder = new Options.Builder()
-                .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress("localhost", proxyServer.getPort())))
+                .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", proxyServer.getPort())))
                 .noReconnect();
 
             if (useEnableInetAddressCreateUnresolved) {
@@ -199,19 +201,18 @@ public class SocketDataPortProxyHostnameTest extends TestBase {
                 // Expected - connection will fail since there's no real server
             }
 
-            String receivedHost = proxyServer.getReceivedHost();
-            if (receivedHost != null) {
-                if (expectIpAddress) {
-                    assertTrue(
-                        isIpAddress(receivedHost),
-                        "Expected IP address but proxy received: " + receivedHost
-                    );
-                } else {
-                    assertFalse(
-                        isIpAddress(receivedHost),
-                        "Expected hostname but proxy received IP: " + receivedHost
-                    );
-                }
+            String receivedHost = proxyServer.awaitReceivedHost(5, TimeUnit.SECONDS);
+            assertNotNull(receivedHost, "Proxy never received a CONNECT request");
+            if (expectIpAddress) {
+                assertTrue(
+                    isIpAddress(receivedHost),
+                    "Expected IP address but proxy received: " + receivedHost
+                );
+            } else {
+                assertFalse(
+                    isIpAddress(receivedHost),
+                    "Expected hostname but proxy received IP: " + receivedHost
+                );
             }
         } finally {
             safeShutdown(proxyServer, executor);
